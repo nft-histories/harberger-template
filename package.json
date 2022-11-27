@@ -4,7 +4,8 @@
     "clean": "yarn hardhat clean",
     "compile": "yarn hardhat compile",
     "typechain": "yarn hardhat typechain",
-    "verify": "yarn hardhat verify"
+    "verify": "yarn hardhat verify",
+    "lint": "eslint '**/*.ts'"
   },
   "devDependencies": {
     "@ethersproject/abi": "^5.4.7",
@@ -26,6 +27,22 @@
     "solidity-coverage": "^0.8.0",
     "ts-node": ">=8.0.0",
     "typechain": "^8.1.0",
-    "typescript": ">=4.5.0"
+    "typescript": ">=4.5.0",
+    "hardhat-prettier": "^0.0.1",
+    "prettier": "^2.7.1",
+    "prettier-plugin-solidity": "^1.0.0-beta.24",
+    "eslint": "^8.25.0",
+    "eslint-config-prettier": "^8.5.0",
+    "eslint-config-standard": "^17.0.0",
+    "eslint-plugin": "^1.0.1",
+    "eslint-plugin-import": "^2.26.0",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-promise": "^6.1.0",
+    "eslint-plugin-simple-import-sort": "^8.0.0",
+    "eslint-plugin-unused-imports": "^2.0.0",
+    "@typescript-eslint/eslint-plugin": "^5.40.0",
+    "@typescript-eslint/parser": "^5.40.0",
+    "solhint": "^3.3.7",
+    "@nomiclabs/hardhat-solhint": "^2.0.1"
   }
 }
