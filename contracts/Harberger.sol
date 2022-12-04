@@ -7,13 +7,16 @@ import {ERC721} from '@openzeppelin/contracts/token/ERC721/ERC721.sol';
 import {ERC721Enumerable} from '@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol';
 import {ERC721Pausable} from '@openzeppelin/contracts/token/ERC721/extensions/ERC721Pausable.sol';
 
+/// @title Harberger
+/// @notice An extension of ERC721 that implements the Harberger tax model.
+/// @dev This contract is a WIP & not audited and should NOT be used in production.
 abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     struct TokenHarbergerData {
-        uint evaluationInETH;
-        uint timestampOfLastEvaluation;
-        uint taxOwedInETH;
-        uint timestampOfLastPaid;
-        uint timestampOfLastForceBuy;
+        uint evaluationInETH; // The current evaluation of the token
+        uint timestampOfLastEvaluation; // The timestamp of the last evaluation
+        uint taxOwedInETH; // The amount of tax owed on the token
+        uint timestampOfLastPaid; // The timestamp of the last time the tax was paid
+        uint timestampOfLastForceBuy; // The timestamp of the last time the token was force bought
     }
 
     uint public constant taxDivider = 1e4; // 1/10000
@@ -27,12 +30,20 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     /// @dev Mapping from token ID to token data
     mapping(uint => TokenHarbergerData) public tokens;
 
+    /// @notice Emitted when a token's taxes are recalculated
     event TaxRecalculation(uint indexed tokenId, uint taxOwedInETH);
+    /// @notice Emitted when a token is found to be overdue on taxes (i.e.: in arrears)
     event FoundInArrears(uint indexed tokenId);
+    /// @notice Emitted when a token is seized for non-payment of taxes
     event Seized(uint indexed tokenId);
+    /// @notice Emitted when a token is re-evaluated by its owner
     event SelfEvaluation(uint indexed tokenId, uint evaluationInETH);
+    /// @notice Emitted when a token is force-bought
     event ForceBought(uint indexed tokenId, uint price, address indexed buyer);
 
+    /// @notice Transfers all the accumulated ETH (tax) to the caller.
+    /// NOTE: Can only be called by the owner of the contract.
+    /// @dev Could be improved by 1. passing in an `amount` to withdraw and 2. making the transfer to `owner` instead of `msg.sender`.
     function withdrawTaxes() external onlyOwner {
         uint balance = address(this).balance;
         require(balance > 0, 'Harberger: no taxes to withdraw');
@@ -46,6 +57,10 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     //     |  |     /  _____  \   /  .  \     |  `----.|  `--'  | |  '--'  ||  |____
     //     |__|    /__/     \__\ /__/ \__\     \______| \______/  |_______/ |_______|
 
+    /// @notice Attempts to seize the token with `tokenId` if its owner is in arrears (late on their tax payments).
+    /// This will transfer the token to the contract owner and emit a `Seized` event.
+    /// NOTE: Can only be called by the owner of the contract.
+    /// @param tokenId The ID of the token to seize.
     function seize(uint tokenId) external virtual onlyOwner {
         require(isInArrears(tokenId), 'Harberger: not in arrears');
         TokenHarbergerData storage token = tokens[tokenId];
@@ -55,6 +70,12 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
         emit Seized(tokenId);
     }
 
+    /// @notice The owner of the token with `tokenId` pays their taxes.
+    /// NOTE: Can only be called by the owner of the token.
+    /// NOTE: This recalculates the tax before paying it. This is to prevent the owner from paying less than they should.
+    /// It may make sense to call `recalculateTax` before calling this function so that the owner knows how much they owe.
+    /// @dev Could be improved by 1. passing in an `amount` to pay 2. emitting an event with the amount paid
+    /// @param tokenId The ID of the token to pay taxes for.
     function payTax(uint tokenId) external payable virtual {
         TokenHarbergerData storage token = tokens[tokenId];
         require(msg.sender == ownerOf(tokenId), 'Harberger: not owner');
@@ -63,6 +84,11 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
         token.taxOwedInETH = 0;
     }
 
+    /// @notice Check if the token with `tokenId` is in arrears (late on their tax payments).
+    /// Returns `true` if the token is in arrears, `false` otherwise. Also emits an event if the token is in arrears.
+    /// NOTE: If a token is in arrears, it can be seized by the owner of the contract.
+    /// @param tokenId The ID of the token to check.
+    /// @return inArrears `true` if the token is in arrears, `false` otherwise.
     function isInArrears(uint tokenId) public virtual returns (bool inArrears) {
         inArrears = _isInArrears(tokenId);
         if (inArrears) {
@@ -71,6 +97,10 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
         return inArrears;
     }
 
+    /// @notice Recalculates the tax owed for the token with `tokenId` and stores it in the contract.
+    /// Also returns the amount of tax owed in ETH and emits a `TaxRecalculation` event.
+    /// @param tokenId The ID of the token to recalculate the tax for.
+    /// @return taxOwed The amount of tax owed in ETH.
     function recalculateTax(uint tokenId) public virtual returns (uint taxOwed) {
         TokenHarbergerData storage token = tokens[tokenId];
         taxOwed = _taxOwedFor(tokenId);
@@ -78,17 +108,27 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
         emit TaxRecalculation(tokenId, taxOwed);
     }
 
+    /// @notice Calculates the tax that would be owed for the token with `tokenId` for a one year period.
+    /// @param tokenId The ID of the token to calculate the tax for.
+    /// @return The amount of tax that would be owner per year in ETH.
     function perAnnumTax(uint tokenId) public view virtual returns (uint) {
         TokenHarbergerData storage token = tokens[tokenId];
         return (token.evaluationInETH * taxRate) / taxDivider;
     }
 
+    /// @dev Internal view function to see if a token is in arrears.
+    /// @dev "In arrears" means that the taxes have not been paid for a period of time greater than `annum + taxGracePeriod`.
+    /// @param tokenId The ID of the token to check.
+    /// @return `true` if the token is in arrears, `false` otherwise.
     function _isInArrears(uint tokenId) internal view virtual returns (bool) {
         TokenHarbergerData storage token = tokens[tokenId];
         uint taxDeadline = token.timestampOfLastPaid + annum + taxGracePeriod;
         return block.timestamp > taxDeadline;
     }
 
+    /// @dev Internal view function to calculate the tax owed for the token with `tokenId`.
+    /// @param tokenId The ID of the token to calculate the tax for.
+    /// @return The amount of tax owed in ETH.
     function _taxOwedFor(uint tokenId) internal view virtual returns (uint) {
         TokenHarbergerData storage token = tokens[tokenId];
         uint timeSinceLastPaid = block.timestamp - token.timestampOfLastEvaluation;
@@ -102,6 +142,12 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     // |  |  |  |  /  _____  \  |  |\  \----.|  |_)  | |  |____ |  |\  \----.|  |__| | |  |____ |  |\  \----.   |  `----.|  `--'  | |  '--'  ||  |____
     // |__|  |__| /__/     \__\ | _| `._____||______/  |_______|| _| `._____| \______| |_______|| _| `._____|    \______| \______/  |_______/ |_______|
 
+    /// @notice The owner of the token with `tokenId` changes the evaluation of the token to `newEvaluation`.
+    /// Emits a `SelfEvaluation` event.
+    /// NOTE:w A few conditions must be met for this to succeed, like the token not being in arrears or a lock period.
+    /// @dev We should have a mechanism where changing the evaluation doesn't reset the tax owed.
+    /// @param tokenId The ID of the token to change the evaluation of.
+    /// @param newEvaluation The new evaluation of the token.
     function selfEvaluate(uint tokenId, uint newEvaluation) external virtual {
         TokenHarbergerData storage token = tokens[tokenId];
 
@@ -122,6 +168,9 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
         emit SelfEvaluation(tokenId, newEvaluation);
     }
 
+    /// @notice Any non-owner of the token with `tokenId` can buy the token for `newEvaluation` ETH if it's not force buy locked.
+    /// Emits a `ForceBought` event and puts the token in a force buy lock period.
+    /// @param tokenId The ID of the token to buy.
     function forceBuy(uint tokenId) external payable virtual {
         TokenHarbergerData storage token = tokens[tokenId];
 
@@ -134,12 +183,20 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
         emit ForceBought(tokenId, msg.value, msg.sender);
     }
 
+    /// @notice Checks if the token with `tokenId` is in a force buy lock period. Returns `true` if it is, `false` otherwise.
+    /// NOTE: A force buy lock period is a period of time where the token cannot be force bought. It is set when the token is force bought.
+    /// @param tokenId The ID of the token to check.
+    /// @return `true` if the token is in a force buy lock period, `false` otherwise.
     function isForceBuyLocked(uint tokenId) public view virtual returns (bool) {
         TokenHarbergerData storage token = tokens[tokenId];
         uint timestampOfLockExpiration = token.timestampOfLastForceBuy + forceBuyLockPeriod;
         return block.timestamp <= timestampOfLockExpiration;
     }
 
+    /// @notice Checks if the token with `tokenId` is in a self evaluation lock period. Returns `true` if it is, `false` otherwise.
+    /// NOTE: A self evaluation lock period is a period of time where the token cannot be self evaluated. It is set when the token is self evaluated.
+    /// @param tokenId The ID of the token to check.
+    /// @return `true` if the token is in a self evaluation lock period, `false` otherwise.
     function isSelfEvaluationLocked(uint tokenId) public view virtual returns (bool) {
         TokenHarbergerData storage token = tokens[tokenId];
         uint timestampOfLockExpiration = token.timestampOfLastEvaluation + selfEvaluationLockPeriod;
