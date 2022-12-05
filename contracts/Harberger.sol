@@ -202,4 +202,50 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
         uint timestampOfLockExpiration = token.timestampOfLastEvaluation + selfEvaluationLockPeriod;
         return block.timestamp <= timestampOfLockExpiration;
     }
+
+    //   _______  _______ .___________.___________. _______ .______          _______.
+    //  /  _____||   ____||           |           ||   ____||   _  \        /       |
+    // |  |  __  |  |__   `---|  |----`---|  |----`|  |__   |  |_)  |      |   (----`
+    // |  | |_ | |   __|      |  |        |  |     |   __|  |      /        \   \
+    // |  |__| | |  |____     |  |        |  |     |  |____ |  |\  \----.----)   |
+    //  \______| |_______|    |__|        |__|     |_______|| _| `._____|_______/
+
+    /// @notice Gets the evaluation of the token with `tokenId` (as stored).
+    /// @param tokenId The ID of the token to get the evaluation of.
+    /// @return evaluation evaluation in ETH.
+    function getEvaluation(uint tokenId) external view virtual returns (uint evaluation) {
+        return tokens[tokenId].evaluationInETH;
+    }
+
+    /// @notice Gets the timestamp of the last evaluation of the token with `tokenId` (as stored).
+    /// @param tokenId The ID of the token to get the timestamp of the last evaluation of.
+    /// @return timestamp the timestamp of the last evaluation.
+    function getTimestampOfLastEvaluation(
+        uint tokenId
+    ) external view virtual returns (uint timestamp) {
+        return tokens[tokenId].timestampOfLastEvaluation;
+    }
+
+    /// @notice Gets the tax owed on the token with `tokenId` (as stored - you may want to `recalculateTax` beforehand).
+    /// @param tokenId The ID of the token to get the tax owed on.
+    /// @return taxOwed tax owed in ETH.
+    function getTaxOwed(uint tokenId) external view virtual returns (uint taxOwed) {
+        return tokens[tokenId].taxOwedInETH;
+    }
+
+    /// @notice Gets the timestamp of the last time the tax was paid on the token with `tokenId` (as stored).
+    /// @param tokenId The ID of the token to get the timestamp of the last time the tax was paid on.
+    /// @return timestamp the timestamp of the last time the tax was paid.
+    function getTimestampOfLastPaid(uint tokenId) external view virtual returns (uint timestamp) {
+        return tokens[tokenId].timestampOfLastPaid;
+    }
+
+    /// @notice Gets the timestamp of the last time the token with `tokenId` was force bought (as stored).
+    /// @param tokenId The ID of the token to get the timestamp of the last time it was force bought.
+    /// @return timestamp the timestamp of the last time the token was force bought.
+    function getTimestampOfLastForceBuy(
+        uint tokenId
+    ) external view virtual returns (uint timestamp) {
+        return tokens[tokenId].timestampOfLastForceBuy;
+    }
 }
