@@ -142,6 +142,18 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     // |  |  |  |  /  _____  \  |  |\  \----.|  |_)  | |  |____ |  |\  \----.|  |__| | |  |____ |  |\  \----.   |  `----.|  `--'  | |  '--'  ||  |____
     // |__|  |__| /__/     \__\ | _| `._____||______/  |_______|| _| `._____| \______| |_______|| _| `._____|    \______| \______/  |_______/ |_______|
 
+    /// @notice Initializes the Harberger data for the token with `tokenId`.
+    /// @dev NOTE: It is very important that this function is called when a token is minted.
+    /// @dev Otherwise, the token will be vulnerable to malicious forceBuy and seize actions.
+    /// @param tokenId The ID of the token to initialize the Harberger data for.
+    function _initializeHarbergerData(uint tokenId) internal virtual {
+        TokenHarbergerData storage token = tokens[tokenId];
+        token.timestampOfLastPaid = block.timestamp;
+        token.timestampOfLastEvaluation = block.timestamp;
+        token.evaluationInETH = evaluationMinimum;
+        token.taxOwedInETH = 0;
+    }
+
     /// @notice The owner of the token with `tokenId` changes the evaluation of the token to `newEvaluation`.
     /// Emits a `SelfEvaluation` event.
     /// NOTE:w A few conditions must be met for this to succeed, like the token not being in arrears or a lock period.
