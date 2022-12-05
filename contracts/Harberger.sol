@@ -143,9 +143,9 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     // |__|  |__| /__/     \__\ | _| `._____||______/  |_______|| _| `._____| \______| |_______|| _| `._____|    \______| \______/  |_______/ |_______|
 
     /// @dev This function overrides the ERC721 `_mint` function to initialize Harberger data.
-    /// @param tokenId The ID of the token to mint.
     /// @param to The address to mint the token to.
-    function _mint(uint tokenId, address to) internal virtual {
+    /// @param tokenId The ID of the token to mint.
+    function _mint(address to, uint tokenId) internal virtual override(ERC721) {
         super._mint(to, tokenId);
         _initializeHarbergerData(tokenId);
     }
