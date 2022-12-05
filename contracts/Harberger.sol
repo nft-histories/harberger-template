@@ -142,6 +142,31 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     // |  |  |  |  /  _____  \  |  |\  \----.|  |_)  | |  |____ |  |\  \----.|  |__| | |  |____ |  |\  \----.   |  `----.|  `--'  | |  '--'  ||  |____
     // |__|  |__| /__/     \__\ | _| `._____||______/  |_______|| _| `._____| \______| |_______|| _| `._____|    \______| \______/  |_______/ |_______|
 
+    /// @dev This function overrides the ERC721 `_mint` function to initialize Harberger data.
+    /// @param tokenId The ID of the token to mint.
+    /// @param to The address to mint the token to.
+    function _mint(uint tokenId, address to) internal virtual {
+        super._mint(to, tokenId);
+        _initializeHarbergerData(tokenId);
+    }
+
+    /// @dev This function overrides the ERC721 `_burn` function to delete Harberger data.
+    /// @param tokenId The ID of the token to burn.
+    function _burn(uint tokenId) internal virtual override {
+        super._burn(tokenId);
+        delete tokens[tokenId];
+    }
+
+    /// @notice Initializes the Harberger data for the token with `tokenId`.
+    /// @param tokenId The ID of the token to initialize the Harberger data for.
+    function _initializeHarbergerData(uint tokenId) internal virtual {
+        TokenHarbergerData storage token = tokens[tokenId];
+        token.timestampOfLastPaid = block.timestamp;
+        token.timestampOfLastEvaluation = block.timestamp;
+        token.evaluationInETH = evaluationMinimum;
+        token.taxOwedInETH = 0;
+    }
+
     /// @notice The owner of the token with `tokenId` changes the evaluation of the token to `newEvaluation`.
     /// Emits a `SelfEvaluation` event.
     /// NOTE:w A few conditions must be met for this to succeed, like the token not being in arrears or a lock period.
