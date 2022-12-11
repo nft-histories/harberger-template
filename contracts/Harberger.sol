@@ -50,6 +50,12 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
         payable(msg.sender).transfer(balance);
     }
 
+    /// @notice modifier that checks if `tokenId` is minted
+    modifier onlyMinted(uint tokenId) {
+        require(_exists(tokenId), 'Token is not minted yet');
+        _;
+    }
+
     // .___________.    ___      ___   ___      ______   ______    _______   _______
     // |           |   /   \     \  \ /  /     /      | /  __  \  |       \ |   ____|
     // `---|  |----`  /  ^  \     \  V  /     |  ,----'|  |  |  | |  .--.  ||  |__
@@ -61,7 +67,7 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     /// This will transfer the token to the contract owner and emit a `Seized` event.
     /// NOTE: Can only be called by the owner of the contract.
     /// @param tokenId The ID of the token to seize.
-    function seize(uint tokenId) external virtual onlyOwner {
+    function seize(uint tokenId) external virtual onlyMinted(tokenId) onlyOwner {
         require(isInArrears(tokenId), 'Harberger: not in arrears');
         TokenHarbergerData storage token = tokens[tokenId];
         token.taxOwedInETH = 0;
@@ -76,7 +82,7 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     /// It may make sense to call `recalculateTax` before calling this function so that the owner knows how much they owe.
     /// @dev Could be improved by 1. passing in an `amount` to pay 2. emitting an event with the amount paid
     /// @param tokenId The ID of the token to pay taxes for.
-    function payTax(uint tokenId) external payable virtual {
+    function payTax(uint tokenId) external payable virtual onlyMinted(tokenId) {
         TokenHarbergerData storage token = tokens[tokenId];
         require(msg.sender == ownerOf(tokenId), 'Harberger: not owner');
         require(msg.value >= recalculateTax(tokenId), 'Harberger: not enough sent');
@@ -89,7 +95,7 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     /// NOTE: If a token is in arrears, it can be seized by the owner of the contract.
     /// @param tokenId The ID of the token to check.
     /// @return inArrears `true` if the token is in arrears, `false` otherwise.
-    function isInArrears(uint tokenId) public virtual returns (bool inArrears) {
+    function isInArrears(uint tokenId) public virtual onlyMinted(tokenId) returns (bool inArrears) {
         inArrears = _isInArrears(tokenId);
         if (inArrears) {
             emit FoundInArrears(tokenId);
@@ -101,7 +107,9 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     /// Also returns the amount of tax owed in ETH and emits a `TaxRecalculation` event.
     /// @param tokenId The ID of the token to recalculate the tax for.
     /// @return taxOwed The amount of tax owed in ETH.
-    function recalculateTax(uint tokenId) public virtual returns (uint taxOwed) {
+    function recalculateTax(
+        uint tokenId
+    ) public virtual onlyMinted(tokenId) returns (uint taxOwed) {
         TokenHarbergerData storage token = tokens[tokenId];
         taxOwed = _taxOwedFor(tokenId);
         token.taxOwedInETH = taxOwed;
@@ -111,7 +119,7 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     /// @notice Calculates the tax that would be owed for the token with `tokenId` for a one year period.
     /// @param tokenId The ID of the token to calculate the tax for.
     /// @return The amount of tax that would be owner per year in ETH.
-    function perAnnumTax(uint tokenId) public view virtual returns (uint) {
+    function perAnnumTax(uint tokenId) public view virtual onlyMinted(tokenId) returns (uint) {
         TokenHarbergerData storage token = tokens[tokenId];
         return (token.evaluationInETH * taxRate) / taxDivider;
     }
@@ -120,7 +128,7 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     /// @dev "In arrears" means that the taxes have not been paid for a period of time greater than `annum + taxGracePeriod`.
     /// @param tokenId The ID of the token to check.
     /// @return `true` if the token is in arrears, `false` otherwise.
-    function _isInArrears(uint tokenId) internal view virtual returns (bool) {
+    function _isInArrears(uint tokenId) internal view virtual onlyMinted(tokenId) returns (bool) {
         TokenHarbergerData storage token = tokens[tokenId];
         uint taxDeadline = token.timestampOfLastPaid + annum + taxGracePeriod;
         return block.timestamp > taxDeadline;
@@ -129,7 +137,7 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     /// @dev Internal view function to calculate the tax owed for the token with `tokenId`.
     /// @param tokenId The ID of the token to calculate the tax for.
     /// @return The amount of tax owed in ETH.
-    function _taxOwedFor(uint tokenId) internal view virtual returns (uint) {
+    function _taxOwedFor(uint tokenId) internal view virtual onlyMinted(tokenId) returns (uint) {
         TokenHarbergerData storage token = tokens[tokenId];
         uint timeSinceLastPaid = block.timestamp - token.timestampOfLastEvaluation;
         return (perAnnumTax(tokenId) * timeSinceLastPaid) / annum;
@@ -146,7 +154,7 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     /// @dev NOTE: It is very important that this function is called when a token is minted.
     /// @dev Otherwise, the token will be vulnerable to malicious forceBuy and seize actions.
     /// @param tokenId The ID of the token to initialize the Harberger data for.
-    function _initializeHarbergerData(uint tokenId) internal virtual {
+    function _initializeHarbergerData(uint tokenId) internal virtual onlyMinted(tokenId) {
         TokenHarbergerData storage token = tokens[tokenId];
         token.timestampOfLastPaid = block.timestamp;
         token.timestampOfLastEvaluation = block.timestamp;
@@ -160,7 +168,7 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     /// @dev We should have a mechanism where changing the evaluation doesn't reset the tax owed.
     /// @param tokenId The ID of the token to change the evaluation of.
     /// @param newEvaluation The new evaluation of the token.
-    function selfEvaluate(uint tokenId, uint newEvaluation) external virtual {
+    function selfEvaluate(uint tokenId, uint newEvaluation) external virtual onlyMinted(tokenId) {
         TokenHarbergerData storage token = tokens[tokenId];
 
         require(ownerOf(tokenId) == msg.sender, 'Harberger: not owner');
@@ -183,7 +191,7 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     /// @notice Any non-owner of the token with `tokenId` can buy the token for `newEvaluation` ETH if it's not force buy locked.
     /// Emits a `ForceBought` event and puts the token in a force buy lock period.
     /// @param tokenId The ID of the token to buy.
-    function forceBuy(uint tokenId) external payable virtual {
+    function forceBuy(uint tokenId) external payable virtual onlyMinted(tokenId) {
         TokenHarbergerData storage token = tokens[tokenId];
 
         require(ownerOf(tokenId) != msg.sender, 'Harberger: owner cannot self force buy');
@@ -199,7 +207,7 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     /// NOTE: A force buy lock period is a period of time where the token cannot be force bought. It is set when the token is force bought.
     /// @param tokenId The ID of the token to check.
     /// @return `true` if the token is in a force buy lock period, `false` otherwise.
-    function isForceBuyLocked(uint tokenId) public view virtual returns (bool) {
+    function isForceBuyLocked(uint tokenId) public view virtual onlyMinted(tokenId) returns (bool) {
         TokenHarbergerData storage token = tokens[tokenId];
         uint timestampOfLockExpiration = token.timestampOfLastForceBuy + forceBuyLockPeriod;
         return block.timestamp <= timestampOfLockExpiration;
@@ -209,7 +217,9 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     /// NOTE: A self evaluation lock period is a period of time where the token cannot be self evaluated. It is set when the token is self evaluated.
     /// @param tokenId The ID of the token to check.
     /// @return `true` if the token is in a self evaluation lock period, `false` otherwise.
-    function isSelfEvaluationLocked(uint tokenId) public view virtual returns (bool) {
+    function isSelfEvaluationLocked(
+        uint tokenId
+    ) public view virtual onlyMinted(tokenId) returns (bool) {
         TokenHarbergerData storage token = tokens[tokenId];
         uint timestampOfLockExpiration = token.timestampOfLastEvaluation + selfEvaluationLockPeriod;
         return block.timestamp <= timestampOfLockExpiration;
@@ -225,7 +235,9 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     /// @notice Gets the evaluation of the token with `tokenId` (as stored).
     /// @param tokenId The ID of the token to get the evaluation of.
     /// @return evaluation evaluation in ETH.
-    function getEvaluation(uint tokenId) external view virtual returns (uint evaluation) {
+    function getEvaluation(
+        uint tokenId
+    ) external view virtual onlyMinted(tokenId) returns (uint evaluation) {
         return tokens[tokenId].evaluationInETH;
     }
 
@@ -234,21 +246,25 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     /// @return timestamp the timestamp of the last evaluation.
     function getTimestampOfLastEvaluation(
         uint tokenId
-    ) external view virtual returns (uint timestamp) {
+    ) external view virtual onlyMinted(tokenId) returns (uint timestamp) {
         return tokens[tokenId].timestampOfLastEvaluation;
     }
 
     /// @notice Gets the tax owed on the token with `tokenId` (as stored - you may want to `recalculateTax` beforehand).
     /// @param tokenId The ID of the token to get the tax owed on.
     /// @return taxOwed tax owed in ETH.
-    function getTaxOwed(uint tokenId) external view virtual returns (uint taxOwed) {
+    function getTaxOwed(
+        uint tokenId
+    ) external view virtual onlyMinted(tokenId) returns (uint taxOwed) {
         return tokens[tokenId].taxOwedInETH;
     }
 
     /// @notice Gets the timestamp of the last time the tax was paid on the token with `tokenId` (as stored).
     /// @param tokenId The ID of the token to get the timestamp of the last time the tax was paid on.
     /// @return timestamp the timestamp of the last time the tax was paid.
-    function getTimestampOfLastPaid(uint tokenId) external view virtual returns (uint timestamp) {
+    function getTimestampOfLastPaid(
+        uint tokenId
+    ) external view virtual onlyMinted(tokenId) returns (uint timestamp) {
         return tokens[tokenId].timestampOfLastPaid;
     }
 
@@ -257,7 +273,7 @@ abstract contract Harberger is Ownable, Pausable, ERC721Enumerable {
     /// @return timestamp the timestamp of the last time the token was force bought.
     function getTimestampOfLastForceBuy(
         uint tokenId
-    ) external view virtual returns (uint timestamp) {
+    ) external view virtual onlyMinted(tokenId) returns (uint timestamp) {
         return tokens[tokenId].timestampOfLastForceBuy;
     }
 }
